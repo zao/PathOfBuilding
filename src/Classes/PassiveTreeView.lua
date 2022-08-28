@@ -395,13 +395,6 @@ function PassiveTreeViewClass:Draw(build, viewPort, inputEvents)
 			setConnectorColor(1, 0, 0)
 		end
 
-		-- Convert vertex coordinates to screen-space and add them to the coordinate array
-		local vert = connector.vert[state]
-		connector.c[1], connector.c[2] = treeToScreen(vert[1], vert[2])
-		connector.c[3], connector.c[4] = treeToScreen(vert[3], vert[4])
-		connector.c[5], connector.c[6] = treeToScreen(vert[5], vert[6])
-		connector.c[7], connector.c[8] = treeToScreen(vert[7], vert[8])
-
 		if hoverDep and hoverDep[node1] and hoverDep[node2] then
 			-- Both nodes depend on the node currently being hovered over, so color the line red
 			setConnectorColor(1, 0, 0)
@@ -410,7 +403,10 @@ function PassiveTreeViewClass:Draw(build, viewPort, inputEvents)
 			setConnectorColor(0.75, 0.75, 0.75)
 		end
 		SetDrawColor(unpack(connectorColor))
-		DrawImageQuad(tree.assets[connector.type..state].handle, unpack(connector.c))
+		local rotC, rotS = 1, 0
+		local mtx = {scale * rotC, scale * -rotS, scale * rotS, scale * rotC, offsetX, offsetY}
+		local isBent = connector.type ~= "LineConnector"
+		DrawImageMesh(isBent and self.dbguv or tree.assets[connector.type..state].handle, connector.mesh[state], mtx)
 	end
 
 	-- Draw the connecting lines between nodes

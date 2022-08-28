@@ -17,6 +17,8 @@ local m_sin = math.sin
 local m_cos = math.cos
 local m_tan = math.tan
 local m_sqrt = math.sqrt
+local m_floor = math.floor
+local m_abs = math.abs
 
 
 local classArt = {
@@ -646,29 +648,9 @@ function PassiveTreeClass:BuildConnector(node1, node2)
 		local arcAngle = node2.angle - node1.angle
 		if arcAngle >= m_pi then
 			node1, node2 = node2, node1
-			arcAngle = m_pi * 2 - arcAngle
 		end
-		if arcAngle <= m_pi then
-			-- Angle is less than 180 degrees, draw an arc
-			-- If our arc is greater than 90 degrees, we will need 2 arcs because our orbit assets are at most 90 degree arcs see below
-			-- The calling class already handles adding a second connector object in the return table if provided and omits it if nil
-			-- Establish a nil secondConnector to populate in the case that we need a second arc (>90 degree orbit)
-			local secondConnector
-			if arcAngle > (m_pi / 2) then
-				-- Angle is greater than 90 degrees.
-				-- The default behavior for a given arcAngle is to place the arc at the center point between two nodes and clip the excess
-				-- If we need a second arc of any size, we should shift the arcAngle to 25% of the distance between the nodes instead of 50%
-				arcAngle = arcAngle / 2
-				-- clone the original connector table to ensure same functionality for both of the necessary connectors
-				secondConnector = copyTableSafe(connector)
-				-- And then ask the BuildArc function to create a connector that is a mirror of the provided arcAngle
-				-- Provide the second connector as a parameter to store the mirrored arc
-				self:BuildArc(arcAngle, node1, secondConnector, true)
-			end
-			-- generate the primary arc -- this arcAngle may have been modified if we have determined that a second arc is necessary for this orbit
-			self:BuildArc(arcAngle, node1, connector)
-			return { connector, secondConnector }
-		end
+		self:BuildArcBand(node1, node2, connector)
+		return { connector }
 	end
 
 	-- Generate a straight line
@@ -679,58 +661,124 @@ function PassiveTreeClass:BuildConnector(node1, node2)
 	local scale = art.height * 1.33 / dist
 	local nX, nY = vX * scale, vY * scale
 	local endS = dist / (art.width * 1.33)
-	connector[1], connector[2] = node1.x - nY, node1.y + nX
-	connector[3], connector[4] = node1.x + nY, node1.y - nX
-	connector[5], connector[6] = node2.x + nY, node2.y - nX
-	connector[7], connector[8] = node2.x - nY, node2.y + nX
-	connector.c[9], connector.c[10] = 0, 1
-	connector.c[11], connector.c[12] = 0, 0
-	connector.c[13], connector.c[14] = endS, 0
-	connector.c[15], connector.c[16] = endS, 1
-	connector.vert = { Normal = connector, Intermediate = connector, Active = connector }
+	local pos =  {
+		node1.x - nY, node1.y + nX,
+		node1.x + nY, node1.y - nX,
+		node2.x + nY, node2.y - nX,
+		node2.x - nY, node2.y + nX,
+	}
+	local tcs = {
+		0, 1,
+		0, 0,
+		endS, 0,
+		endS, 1,
+	}
+	local mesh = NewMeshHandle()
+	mesh:Build(pos, tcs, {1, 2, 3, 3, 4, 1})
+	connector.mesh = { Normal = mesh, Intermediate = mesh, Active = mesh }
 	return { connector }
 end
 
-function PassiveTreeClass:BuildArc(arcAngle, node1, connector, isMirroredArc)
+function Lerp(a, b, f)
+	return a * (1 - f) + b * f
+end
+
+function VLength(x, y)
+	return m_sqrt(x*x + y*y)
+end
+
+function AppendValues(l, ...)
+	for _, val in ipairs{...} do
+		l[#l+1] = val
+	end
+end
+
+function PassiveTreeClass:BuildArcBand(node1, node2, connector)
 	connector.type = "Orbit" .. node1.o
-	-- This is an arc texture mapped onto a kite-shaped quad
-	-- Calculate how much the arc needs to be clipped by
-	-- Both ends of the arc will be clipped by this amount, so 90 degree arc angle = no clipping and 30 degree arc angle = 75 degrees of clipping
-	-- The clipping is accomplished by effectively moving the bottom left and top right corners of the arc texture towards the top left corner
-	-- The arc texture only shows 90 degrees of an arc, but some arcs must go for more than 90 degrees
-	-- Fortunately there's nowhere on the tree where we can't just show the middle 90 degrees and rely on the node artwork to cover the gaps :)
-	local clipAngle = m_pi / 4 - arcAngle / 2
-	local p = 1 - m_max(m_tan(clipAngle), 0)
-	local angle = node1.angle - clipAngle
-	if isMirroredArc then
-		-- The center of the mirrored angle should be positioned at 75% of the way between nodes.
-		angle = angle + arcAngle
+	local nsegs = 16
+	local r = VLength(node1.x - node1.group.x, node1.y - node1.group.y)
+	local lineArt = self.assets["LineConnector" .. "Normal"]
+	local r1 = r - lineArt.height * 1.33
+	local r2 = r + lineArt.height * 1.33
+	local a1, a2 = node1.angle, node2.angle
+	local q1, q2 = m_floor(a1 / (2 * m_pi)), m_floor(a2 / (2 * m_pi))
+	if q1 == q2 and a1 > a2 then
+		-- The nodes are in the same quadrant but the arc must pass clockwise through the rest of the quadrants
+		q2 = q2 + 4
+		a2 = a2 + 2 * m_pi
 	end
-	connector.vert = { }
-	for _, state in pairs({ "Normal", "Intermediate", "Active" }) do
-		-- The different line states have differently-sized artwork, so the vertex coords must be calculated separately for each one
-		local art = self.assets[connector.type .. state]
-		local size = art.width * 2 * 1.33
-		local oX, oY = size * m_sqrt(2) * m_sin(angle + m_pi / 4), size * m_sqrt(2) * -m_cos(angle + m_pi / 4)
-		local cX, cY = node1.group.x + oX, node1.group.y + oY
-		local vert = { }
-		vert[1], vert[2] = node1.group.x, node1.group.y
-		vert[3], vert[4] = cX + (size * m_sin(angle) - oX) * p, cY + (size * -m_cos(angle) - oY) * p
-		vert[5], vert[6] = cX, cY
-		vert[7], vert[8] = cX + (size * m_cos(angle) - oX) * p, cY + (size * m_sin(angle) - oY) * p
-		if (isMirroredArc) then
-		-- Flip the quad's non-origin, non-center vertexes when drawing a mirrored arc so that the arc actually mirrored
-		-- This is required to prevent the connection of the 2 arcs appear to have a 'seam'
-			local temp1, temp2 = vert[3],vert[4]
-			vert[3],vert[4] = vert[7],vert[8]
-			vert[7],vert[8] = temp1, temp2
+
+	local arts = {}
+	local insets = {}
+	local variants = {"Normal", "Intermediate", "Active"}
+	local tcs = {}
+	for _, name in pairs(variants) do
+		local art = self.assets[connector.type .. name]
+		arts[name] = art
+		insets[name] = 1.0 - lineArt.height / art.height
+		tcs[name] = {}
+	end
+	local oX, oY = node1.group.x, node1.group.y
+	local pos = {}
+	local indices = {}
+
+	local function AddOrbitCoordPair(angle)
+		local c, s = m_cos(angle), m_sin(angle)
+		AppendValues(pos, oX + r1 * s, oY + r1 * -c)
+		AppendValues(pos, oX + r2 * s, oY + r2 * -c)
+
+		local tc, ts = -m_abs(c), m_abs(s)
+		for _, name in pairs(variants) do
+			local rInset = insets[name]
+			local art = arts[name]
+			-- TODO(LV): use sprite coordinates to slice texture
+			local u1 = 1.0 - ts * rInset
+			local v1 = tc * rInset
+			local u2 = 1.0 - ts
+			local v2 = tc
+			AppendValues(tcs[name], u1, v1, u2, v2)
 		end
-		connector.vert[state] = vert
 	end
-	connector.c[9], connector.c[10] = 1, 1
-	connector.c[11], connector.c[12] = 0, p
-	connector.c[13], connector.c[14] = 0, 0
-	connector.c[15], connector.c[16] = p, 0
+
+	local function AddOrbitQuad()
+		local last = #pos / 2
+		local ix = {last - 3, last - 2, last - 1, last}
+		indices[#indices+1] = ix[1]
+		indices[#indices+1] = ix[2]
+		indices[#indices+1] = ix[3]
+		indices[#indices+1] = ix[3]
+		indices[#indices+1] = ix[2]
+		indices[#indices+1] = ix[4]
+	end
+
+	-- Build the arc mesh by emitting the first endpoint's vertices then add
+	-- vertices and quads for each intermediate segment, ending with the second
+	-- endpoint and its quad.
+
+	AddOrbitCoordPair(a1)
+
+	local windingParity = q1 % 2
+	local ang = q1 * m_pi / 2  -- start at beginning of first covered quadrant
+	local i = q1 * nsegs
+	while ang < a2 do
+		if a1 < ang then
+			AddOrbitCoordPair(ang)
+			AddOrbitQuad()
+		end
+		i = i + 1
+		ang = i / nsegs * m_pi / 2
+	end
+
+	AddOrbitCoordPair(a2)
+	AddOrbitQuad()
+
+	local mesh = {}
+	for _, name in pairs(variants) do
+		local m = NewMeshHandle()
+		m:Build(pos, tcs[name], indices)
+		mesh[name] = m
+	end
+	connector.mesh = mesh
 end
 
 function PassiveTreeClass:CalcOrbitAngles(nodesInOrbit)
