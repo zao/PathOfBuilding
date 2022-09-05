@@ -193,6 +193,9 @@ function PassiveTreeViewClass:Draw(build, viewPort, inputEvents)
 		return x * scale + offsetX,
 		       y * scale + offsetY
 	end
+	local function treeToScreenTransform()
+		return {scale, 0, 0, scale, offsetX, offsetY}
+	end
 	local function screenToTree(x, y)
 		return (x - offsetX) / scale,
 		       (y - offsetY) / scale
@@ -374,48 +377,13 @@ function PassiveTreeViewClass:Draw(build, viewPort, inputEvents)
 		end
 		return state
 	end
-	local function drawConnectorLine(treeQuad, state)
-		-- The real game tiles the sprite for long connectors, but we
-		-- cheat a little and just stretch the sprite.
+	local function drawConnectorLine(connector, treeQuad, state)
 		local sprite = tree.spriteMap.line["LineConnector"..state]
-		local tcLeft, tcTop, tcRight, tcBottom = unpack(sprite)
-
-		local args = {}
-		args[1], args[2] = treeToScreen(treeQuad[1], treeQuad[2])
-		args[3], args[4] = treeToScreen(treeQuad[3], treeQuad[4])
-		args[5], args[6] = treeToScreen(treeQuad[5], treeQuad[6])
-		args[7], args[8] = treeToScreen(treeQuad[7], treeQuad[8])
-		args[9], args[10] = tcLeft, tcBottom
-		args[11], args[12] = tcLeft, tcTop
-		args[13], args[14] = tcRight, tcTop
-		args[15], args[16] = tcRight, tcBottom
-
-		DrawImageQuad(sprite.handle, unpack(args))
+		DrawImageMesh(sprite.handle, connector.meshes[state], treeToScreenTransform())
 	end
-	local function drawConnectorArc(arc, state)
+	local function drawConnectorArc(connector, arc, state)
 		local orbitArc = tree.orbitConnectorArcs[arc.orbit][state]
-
-		local loopEnd = arc.endSegment 
-		if arc.startSegment > arc.endSegment then
-			loopEnd = arc.endSegment + #orbitArc.segments
-		end
-
-		for segmentIndex = arc.startSegment, loopEnd do
-			local arcSegment = orbitArc.segments[(segmentIndex % #orbitArc.segments) + 1]
-			
-			local tx1, ty1, tx2, ty2, tx3, ty3, tx4, ty4 = unpack(arcSegment.treeQuad)
-
-			local sx1, sy1 = treeToScreen(tx1 + arc.centerX, ty1 + arc.centerY)
-			local sx2, sy2 = treeToScreen(tx2 + arc.centerX, ty2 + arc.centerY)
-			local sx3, sy3 = treeToScreen(tx3 + arc.centerX, ty3 + arc.centerY)
-			local sx4, sy4 = treeToScreen(tx4 + arc.centerX, ty4 + arc.centerY)
-
-			DrawImageQuad(
-				orbitArc.sprite.handle,
-				sx1, sy1, sx2, sy2, sx3, sy3, sx4, sy4,
-				unpack(arcSegment.tcQuad)
-			)
-		end
+		DrawImageMesh(orbitArc.sprite.handle, connector.meshes[state], treeToScreenTransform())
 	end
 	local function renderConnector(connector)
 		local node1, node2 = spec.nodes[connector.nodeId1], spec.nodes[connector.nodeId2]
@@ -447,9 +415,9 @@ function PassiveTreeViewClass:Draw(build, viewPort, inputEvents)
 		SetDrawColor(unpack(connectorColor))
 
 		if connector.arc then
-			drawConnectorArc(connector.arc, state)
+			drawConnectorArc(connector, connector.arc, state)
 		else
-			drawConnectorLine(connector.lineQuad, state)
+			drawConnectorLine(connector, connector.lineQuad, state)
 		end
 	end
 

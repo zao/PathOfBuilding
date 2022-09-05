@@ -859,6 +859,44 @@ function PassiveTreeClass:BuildConnectors(node1, node2)
 
 		assert(connector.arc.startSegment >= 0 and connector.arc.startSegment < self.orbitConnectorSegmentsPerOrbit)
 		assert(connector.arc.endSegment >= 0 and connector.arc.endSegment < self.orbitConnectorSegmentsPerOrbit)
+
+		local function appendValues(arr, ...)
+			for _, val in ipairs{...} do
+				arr[#arr+1] = val
+			end
+		end
+		connector.meshes = {}
+		for _, state in ipairs({ "Active", "Intermediate", "Normal" }) do
+			local arc = connector.arc
+			local orbitArc = self.orbitConnectorArcs[arc.orbit][state]
+
+			local loopEnd = arc.endSegment 
+			if arc.startSegment > arc.endSegment then
+				loopEnd = arc.endSegment + #orbitArc.segments
+			end
+	
+			local positions = {}
+			local texcoords = {}
+			local indices = {}
+			for segmentIndex = arc.startSegment, loopEnd do
+				local arcSegment = orbitArc.segments[(segmentIndex % #orbitArc.segments) + 1]
+				local baseIdx = #positions / 2
+				
+				local tx1, ty1, tx2, ty2, tx3, ty3, tx4, ty4 = unpack(arcSegment.treeQuad)
+	
+				local sx1, sy1 = tx1 + arc.centerX, ty1 + arc.centerY
+				local sx2, sy2 = tx2 + arc.centerX, ty2 + arc.centerY
+				local sx3, sy3 = tx3 + arc.centerX, ty3 + arc.centerY
+				local sx4, sy4 = tx4 + arc.centerX, ty4 + arc.centerY
+	
+				appendValues(positions, sx1, sy1, sx2, sy2, sx3, sy3, sx4, sy4)
+				appendValues(texcoords, unpack(arcSegment.tcQuad))
+				appendValues(indices, baseIdx + 1, baseIdx + 2, baseIdx + 3, baseIdx + 1, baseIdx + 3, baseIdx + 4)
+			end
+			local mesh = NewMeshHandle()
+			mesh:Build(positions, texcoords, indices)
+			connector.meshes[state] = mesh
+		end
 	else
 		-- Nodes don't share a group/orbit, build a straight line connector
 		connector.type = "LineConnector"
@@ -874,6 +912,22 @@ function PassiveTreeClass:BuildConnectors(node1, node2)
 			[5] = node2.x + nY, [6] = node2.y - nX,
 			[7] = node2.x - nY, [8] = node2.y + nX
 		}
+		connector.meshes = {}
+		for _, state in ipairs({ "Active", "Intermediate", "Normal" }) do
+			-- The real game tiles the sprite for long connectors, but we
+			-- cheat a little and just stretch the sprite.
+			local sprite = self.spriteMap.line["LineConnector"..state]
+			local tcLeft, tcTop, tcRight, tcBottom = unpack(sprite)
+			local texcoords = {
+				tcLeft, tcBottom,
+				tcLeft, tcTop,
+				tcRight, tcTop,
+				tcRight, tcBottom,
+			}
+			local mesh = NewMeshHandle()
+			mesh:Build(connector.lineQuad, texcoords, {1, 2, 3, 1, 3, 4})
+			connector.meshes[state] = mesh
+		end
 	end
 
 	return { connector }
