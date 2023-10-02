@@ -172,16 +172,24 @@ function PassiveTreeViewClass:Draw(build, viewPort, inputEvents)
 
 	-- Create functions that will convert coordinates between the screen and tree coordinate spaces
 	local scale = m_min(viewPort.width, viewPort.height) / tree.size * self.zoom
-	local offsetX = self.zoomX + viewPort.x + viewPort.width/2
-	local offsetY = self.zoomY + viewPort.y + viewPort.height/2
+	self.offsetX = self.zoomX + viewPort.x + viewPort.width/2
+	self.offsetY = self.zoomY + viewPort.y + viewPort.height/2
 	local function treeToScreen(x, y)
-		return x * scale + offsetX,
-		       y * scale + offsetY
+		return x * scale + self.offsetX,
+		       y * scale + self.offsetY
 	end
 	local function screenToTree(x, y)
-		return (x - offsetX) / scale,
-		       (y - offsetY) / scale
+		return (x - self.offsetX) / scale,
+		       (y - self.offsetY) / scale
 	end
+	self.treeToScreen = {
+		scale, 0, self.offsetX,
+		0, scale, self.offsetY
+	}
+	self.screenToTree = {
+		1 / scale, 0, -self.offsetX / scale,
+		0, 1 / scale, -self.offsetY / scale
+	}
 
 	if IsKeyDown("SHIFT") then
 		-- Enable path tracing mode
@@ -317,41 +325,35 @@ function PassiveTreeViewClass:Draw(build, viewPort, inputEvents)
 
 	-- Hack to draw class background art, the position data doesn't seem to be in the tree JSON yet
 	if build.spec.curClassId == 1 then
-		local scrX, scrY = treeToScreen(-2750, 1600)
-		self:DrawAsset(tree.assets.BackgroundStr, scrX, scrY, scale)
+		self:DrawAsset(tree.assets.BackgroundStr, -2750, 1600)
 	elseif build.spec.curClassId == 2 then
-		local scrX, scrY = treeToScreen(2550, 1600)
-		self:DrawAsset(tree.assets.BackgroundDex, scrX, scrY, scale)
+		self:DrawAsset(tree.assets.BackgroundDex, 2550, 1600)
 	elseif build.spec.curClassId == 3 then
-		local scrX, scrY = treeToScreen(-250, -2200)
-		self:DrawAsset(tree.assets.BackgroundInt, scrX, scrY, scale)
+		self:DrawAsset(tree.assets.BackgroundInt, -250, -2200)
 	elseif build.spec.curClassId == 4 then
-		local scrX, scrY = treeToScreen(-150, 2350)
-		self:DrawAsset(tree.assets.BackgroundStrDex, scrX, scrY, scale)
+		self:DrawAsset(tree.assets.BackgroundStrDex, -150, 2350)
 	elseif build.spec.curClassId == 5 then
-		local scrX, scrY = treeToScreen(-2100, -1500)
-		self:DrawAsset(tree.assets.BackgroundStrInt, scrX, scrY, scale)
+		self:DrawAsset(tree.assets.BackgroundStrInt, -2100, -1500)
 	elseif build.spec.curClassId == 6 then
-		local scrX, scrY = treeToScreen(2350, -1950)
-		self:DrawAsset(tree.assets.BackgroundDexInt, scrX, scrY, scale)
+		self:DrawAsset(tree.assets.BackgroundDexInt, 2350, -1950)
 	end
 
 	local function renderGroup(group, isExpansion)
-		local scrX, scrY = treeToScreen(group.x, group.y)
+		local posX, posY = group.x, group.y
 		if group.ascendancyName then
 			if group.isAscendancyStart then
 				if group.ascendancyName ~= spec.curAscendClassName then
 					SetDrawColor(1, 1, 1, 0.25)
 				end
-				self:DrawAsset(tree.assets["Classes"..group.ascendancyName], scrX, scrY, scale)
+				self:DrawAsset(tree.assets["Classes"..group.ascendancyName], posX, posY)
 				SetDrawColor(1, 1, 1)
 			end
 		elseif group.oo[3] then
-			self:DrawAsset(tree.assets[isExpansion and "GroupBackgroundLargeHalfAlt" or "PSGroupBackground3"], scrX, scrY, scale, true)
+			self:DrawAsset(tree.assets[isExpansion and "GroupBackgroundLargeHalfAlt" or "PSGroupBackground3"], posX, posY, true)
 		elseif group.oo[2] then
-			self:DrawAsset(tree.assets[isExpansion and "GroupBackgroundMediumAlt" or "PSGroupBackground2"], scrX, scrY, scale)
+			self:DrawAsset(tree.assets[isExpansion and "GroupBackgroundMediumAlt" or "PSGroupBackground2"], posX, posY)
 		elseif group.oo[1] then
-			self:DrawAsset(tree.assets[isExpansion and "GroupBackgroundSmallAlt" or "PSGroupBackground1"], scrX, scrY, scale)
+			self:DrawAsset(tree.assets[isExpansion and "GroupBackgroundSmallAlt" or "PSGroupBackground1"], posX, posY)
 		end
 	end
 
@@ -403,10 +405,10 @@ function PassiveTreeViewClass:Draw(build, viewPort, inputEvents)
 
 		-- Convert vertex coordinates to screen-space and add them to the coordinate array
 		local vert = connector.vert[state]
-		connector.c[1], connector.c[2] = treeToScreen(vert[1], vert[2])
-		connector.c[3], connector.c[4] = treeToScreen(vert[3], vert[4])
-		connector.c[5], connector.c[6] = treeToScreen(vert[5], vert[6])
-		connector.c[7], connector.c[8] = treeToScreen(vert[7], vert[8])
+		connector.c[1], connector.c[2] = vert[1], vert[2]
+		connector.c[3], connector.c[4] = vert[3], vert[4]
+		connector.c[5], connector.c[6] = vert[5], vert[6]
+		connector.c[7], connector.c[8] = vert[7], vert[8]
 
 		if hoverDep and hoverDep[node1] and hoverDep[node2] then
 			-- Both nodes depend on the node currently being hovered over, so color the line red
@@ -416,7 +418,7 @@ function PassiveTreeViewClass:Draw(build, viewPort, inputEvents)
 			setConnectorColor(0.75, 0.75, 0.75)
 		end
 		SetDrawColor(unpack(connectorColor))
-		DrawImageQuad(tree.assets[connector.type..state].handle, unpack(connector.c))
+		DrawImageQuadAt(tree.assets[connector.type..state].handle, self.treeToScreen, unpack(connector.c))
 	end
 
 	-- Draw the connecting lines between nodes
@@ -535,8 +537,8 @@ function PassiveTreeViewClass:Draw(build, viewPort, inputEvents)
 			end
 		end
 
-		-- Convert node position to screen-space
-		local scrX, scrY = treeToScreen(node.x, node.y)
+		-- Extract node position
+		local posX, posY = node.x, node.y
 	
 		-- Determine color for the base artwork
 		if self.showHeatMap then
@@ -612,13 +614,13 @@ function PassiveTreeViewClass:Draw(build, viewPort, inputEvents)
 		-- Draw mastery/tattoo effect artwork
 		if effect then
 			SetDrawLayer(nil, 15)
-			self:DrawAsset(effect, scrX, scrY, scale)
+			self:DrawAsset(effect, posX, posY)
 			SetDrawLayer(nil, 25)
 		end
 
 		-- Draw base artwork
 		if base then
-			self:DrawAsset(base, scrX, scrY, scale)
+			self:DrawAsset(base, posX, posY)
 		end
 
 		if overlay then
@@ -659,15 +661,15 @@ function PassiveTreeViewClass:Draw(build, viewPort, inputEvents)
 					end
 				end
 			end
-			self:DrawAsset(tree.assets[overlay], scrX, scrY, scale)
+			self:DrawAsset(tree.assets[overlay], posX, posY)
 			SetDrawColor(1, 1, 1)
 		end
 		if self.searchStrResults[nodeId] then
 			-- Node matches the search string, show the highlight circle
 			SetDrawLayer(nil, 30)
 			SetDrawColor(1, 0, 0)
-			local size = 175 * scale / self.zoom ^ 0.4
-			DrawImage(self.highlightRing, scrX - size, scrY - size, size * 2, size * 2)
+			local size = 175 / self.zoom ^ 0.4
+			DrawImageAt(self.highlightRing, self.treeToScreen, posX - size, posY - size, size * 2, size * 2)
 		end
 		if node == hoverNode and (node.type ~= "Socket" or not IsKeyDown("SHIFT")) and (node.type ~= "Mastery" or node.masteryEffects) and not IsKeyDown("CTRL") and not main.popups[1] then
 			-- Draw tooltip
@@ -676,6 +678,7 @@ function PassiveTreeViewClass:Draw(build, viewPort, inputEvents)
 			if self.tooltip:CheckForUpdate(node, self.showStatDifferences, self.tracePath, launch.devModeAlt, build.outputRevision) then
 				self:AddNodeTooltip(self.tooltip, node, build)
 			end
+			local scrX, scrY = treeToScreen(posX, posY)
 			self.tooltip:Draw(m_floor(scrX - size), m_floor(scrY - size), size * 2, size * 2, viewPort)
 		end
 	end
@@ -685,29 +688,29 @@ function PassiveTreeViewClass:Draw(build, viewPort, inputEvents)
 	for nodeId in pairs(tree.sockets) do
 		local node = spec.nodes[nodeId]
 		if node and (not node.expansionJewel or node.expansionJewel.size == 2) then
-			local scrX, scrY = treeToScreen(node.x, node.y)
+			local posX, posY = node.x, node.y
 			local socket, jewel = build.itemsTab:GetSocketAndJewelForNodeID(nodeId)
 			if node == hoverNode then
 				local isThreadOfHope = jewel and jewel.jewelRadiusLabel == "Variable"
 				if isThreadOfHope then
 					for _, radData in ipairs(build.data.jewelRadius) do
-						local outerSize = radData.outer * scale
-						local innerSize = radData.inner * scale
+						local outerSize = radData.outer
+						local innerSize = radData.inner
 						-- Jewel in socket is Thread of Hope or similar, draw it's annulus
 						if innerSize ~= 0 then
 							SetDrawColor(radData.col)
-							DrawImage(self.ring, scrX - outerSize, scrY - outerSize, outerSize * 2, outerSize * 2)
-							DrawImage(self.ring, scrX - innerSize, scrY - innerSize, innerSize * 2, innerSize * 2)
+							DrawImageAt(self.ring, self.treeToScreen, posX - outerSize, posY - outerSize, outerSize * 2, outerSize * 2)
+							DrawImageAt(self.ring, self.treeToScreen, posY - innerSize, posY - innerSize, innerSize * 2, innerSize * 2)
 						end
 					end
 				else
 					for _, radData in ipairs(build.data.jewelRadius) do
-						local outerSize = radData.outer * scale
-						local innerSize = radData.inner * scale
+						local outerSize = radData.outer
+						local innerSize = radData.inner
 						-- Jewel in socket is not Thread of Hope or similar, draw normal jewel radius
 						if innerSize == 0 then
 							SetDrawColor(radData.col)
-							DrawImage(self.ring, scrX - outerSize, scrY - outerSize, outerSize * 2, outerSize * 2)
+							DrawImageAt(self.ring, self.treeToScreen, posX - outerSize, posY - outerSize, outerSize * 2, outerSize * 2)
 						end
 					end
 				end
@@ -715,42 +718,42 @@ function PassiveTreeViewClass:Draw(build, viewPort, inputEvents)
 				if jewel and jewel.jewelRadiusIndex then
 					-- Draw only the selected jewel radius
 					local radData = build.data.jewelRadius[jewel.jewelRadiusIndex]
-					local outerSize = radData.outer * scale
-					local innerSize = radData.inner * scale * 1.06
+					local outerSize = radData.outer
+					local innerSize = radData.inner * 1.06
 					SetDrawColor(1,1,1,0.7)
 					if jewel.title == "Impossible Escape" then
 						-- Impossible Escape ring shows on the allocated Keystone
 						for keystoneName, _ in pairs(jewel.jewelData.impossibleEscapeKeystones) do
 							local keystone = spec.tree.keystoneMap[keystoneName]
 							if keystone and keystone.x and keystone.y then
-								innerSize = 150 * scale
-								local keyX, keyY = treeToScreen(keystone.x, keystone.y)
-								DrawImage(self.jewelShadedOuterRing, keyX - outerSize, keyY - outerSize, outerSize * 2, outerSize * 2)
-								DrawImage(self.jewelShadedOuterRingFlipped, keyX - outerSize, keyY - outerSize, outerSize * 2, outerSize * 2)
-								DrawImage(self.jewelShadedInnerRing, keyX - innerSize, keyY - innerSize, innerSize * 2, innerSize * 2)
-								DrawImage(self.jewelShadedInnerRingFlipped, keyX - innerSize, keyY - innerSize, innerSize * 2, innerSize * 2)
+								innerSize = 150
+								local keyX, keyY = keystone.x, keystone.y
+								DrawImageAt(self.jewelShadedOuterRing, self.treeToScreen, keyX - outerSize, keyY - outerSize, outerSize * 2, outerSize * 2)
+								DrawImageAt(self.jewelShadedOuterRingFlipped, self.treeToScreen, keyX - outerSize, keyY - outerSize, outerSize * 2, outerSize * 2)
+								DrawImageAt(self.jewelShadedInnerRing, self.treeToScreen, keyX - innerSize, keyY - innerSize, innerSize * 2, innerSize * 2)
+								DrawImageAt(self.jewelShadedInnerRingFlipped, self.treeToScreen, keyX - innerSize, keyY - innerSize, innerSize * 2, innerSize * 2)
 							end
 						end
 					elseif jewel.title:match("^Brutal Restraint") then
-						DrawImage(self.maraketh1, scrX - outerSize, scrY - outerSize, outerSize * 2, outerSize * 2)
-						DrawImage(self.maraketh2, scrX - outerSize, scrY - outerSize, outerSize * 2, outerSize * 2)
+						DrawImageAt(self.maraketh1, self.treeToScreen, posX - outerSize, posY - outerSize, outerSize * 2, outerSize * 2)
+						DrawImageAt(self.maraketh2, self.treeToScreen, posX - outerSize, posY - outerSize, outerSize * 2, outerSize * 2)
 					elseif jewel.title:match("^Elegant Hubris") then
-						DrawImage(self.eternal1, scrX - outerSize, scrY - outerSize, outerSize * 2, outerSize * 2)
-						DrawImage(self.eternal2, scrX - outerSize, scrY - outerSize, outerSize * 2, outerSize * 2)
+						DrawImageAt(self.eternal1, self.treeToScreen, posX - outerSize, posY - outerSize, outerSize * 2, outerSize * 2)
+						DrawImageAt(self.eternal2, self.treeToScreen, posX - outerSize, posY - outerSize, outerSize * 2, outerSize * 2)
 					elseif jewel.title:match("^Glorious Vanity") then
-						DrawImage(self.vaal1, scrX - outerSize, scrY - outerSize, outerSize * 2, outerSize * 2)
-						DrawImage(self.vaal2, scrX - outerSize, scrY - outerSize, outerSize * 2, outerSize * 2)
+						DrawImageAt(self.vaal1, self.treeToScreen, posX - outerSize, posY - outerSize, outerSize * 2, outerSize * 2)
+						DrawImageAt(self.vaal2, self.treeToScreen, posX - outerSize, posY - outerSize, outerSize * 2, outerSize * 2)
 					elseif jewel.title:match("^Lethal Pride") then
-						DrawImage(self.karui1, scrX - outerSize, scrY - outerSize, outerSize * 2, outerSize * 2)
-						DrawImage(self.karui2, scrX - outerSize, scrY - outerSize, outerSize * 2, outerSize * 2)
+						DrawImageAt(self.karui1, self.treeToScreen, posX - outerSize, posY - outerSize, outerSize * 2, outerSize * 2)
+						DrawImageAt(self.karui2, self.treeToScreen, posX - outerSize, posY - outerSize, outerSize * 2, outerSize * 2)
 					elseif jewel.title:match("^Militant Faith") then
-						DrawImage(self.templar1, scrX - outerSize, scrY - outerSize, outerSize * 2, outerSize * 2)
-						DrawImage(self.templar2, scrX - outerSize, scrY - outerSize, outerSize * 2, outerSize * 2)
+						DrawImageAt(self.templar1, self.treeToScreen, posX - outerSize, posY - outerSize, outerSize * 2, outerSize * 2)
+						DrawImageAt(self.templar2, self.treeToScreen, posX - outerSize, posY - outerSize, outerSize * 2, outerSize * 2)
 					else
-						DrawImage(self.jewelShadedOuterRing, scrX - outerSize, scrY - outerSize, outerSize * 2, outerSize * 2)
-						DrawImage(self.jewelShadedOuterRingFlipped, scrX - outerSize, scrY - outerSize, outerSize * 2, outerSize * 2)
-						DrawImage(self.jewelShadedInnerRing, scrX - innerSize, scrY - innerSize, innerSize * 2, innerSize * 2)
-						DrawImage(self.jewelShadedInnerRingFlipped, scrX - innerSize, scrY - innerSize, innerSize * 2, innerSize * 2)
+						DrawImageAt(self.jewelShadedOuterRing, self.treeToScreen, posX - outerSize, posY - outerSize, outerSize * 2, outerSize * 2)
+						DrawImageAt(self.jewelShadedOuterRingFlipped, self.treeToScreen, posX - outerSize, posY - outerSize, outerSize * 2, outerSize * 2)
+						DrawImageAt(self.jewelShadedInnerRing, self.treeToScreen, posX - innerSize, posY - innerSize, innerSize * 2, innerSize * 2)
+						DrawImageAt(self.jewelShadedInnerRingFlipped, self.treeToScreen, posX - innerSize, posY - innerSize, innerSize * 2, innerSize * 2)
 					end
 				end
 			end
@@ -759,7 +762,7 @@ function PassiveTreeViewClass:Draw(build, viewPort, inputEvents)
 end
 
 -- Draws the given asset at the given position
-function PassiveTreeViewClass:DrawAsset(data, x, y, scale, isHalf)
+function PassiveTreeViewClass:DrawAsset(data, x, y, isHalf)
 	if not data then
 		return
 	end
@@ -769,13 +772,13 @@ function PassiveTreeViewClass:DrawAsset(data, x, y, scale, isHalf)
 			return
 		end
 	end
-	local width = data.width * scale * 1.33
-	local height = data.height * scale * 1.33
+	local width = data.width * 1.33
+	local height = data.height * 1.33
 	if isHalf then
-		DrawImage(data.handle, x - width, y - height * 2, width * 2, height * 2)
-		DrawImage(data.handle, x - width, y, width * 2, height * 2, 0, 1, 1, 0)
+		DrawImageAt(data.handle, self.treeToScreen, x - width, y - height * 2, width * 2, height * 2)
+		DrawImageAt(data.handle, self.treeToScreen, x - width, y, width * 2, height * 2, 0, 1, 1, 0)
 	else
-		DrawImage(data.handle, x - width, y - height, width * 2, height * 2, unpack(data))
+		DrawImageAt(data.handle, self.treeToScreen, x - width, y - height, width * 2, height * 2, unpack(data))
 	end
 end
 
