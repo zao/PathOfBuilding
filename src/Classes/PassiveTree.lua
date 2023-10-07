@@ -730,6 +730,11 @@ function PassiveTreeClass:BuildConnector(node1, node2)
 	connector.c[13], connector.c[14] = endS, 0
 	connector.c[15], connector.c[16] = endS, 1
 	connector.vert = { Normal = connector, Intermediate = connector, Active = connector }
+	local positions = {unpack(connector, 1, 8)}
+	local texcoords = {unpack(connector.c, 9, 16)}
+	local indices = {1, 2, 3, 1, 3, 4}
+	local mesh = NewMeshHandle(positions, texcoords, indices)
+	connector.mesh = { Normal = mesh, Intermediate = mesh, Active = mesh }
 	return { connector }
 end
 
@@ -749,6 +754,11 @@ function PassiveTreeClass:BuildArc(arcAngle, node1, connector, isMirroredArc)
 		angle = angle + arcAngle
 	end
 	connector.vert = { }
+	connector.mesh = { }
+	connector.c[9], connector.c[10] = 1, 1
+	connector.c[11], connector.c[12] = 0, p
+	connector.c[13], connector.c[14] = 0, 0
+	connector.c[15], connector.c[16] = p, 0
 	for _, state in pairs({ "Normal", "Intermediate", "Active" }) do
 		-- The different line states have differently-sized artwork, so the vertex coords must be calculated separately for each one
 		local art = self.assets[connector.type .. state]
@@ -768,11 +778,12 @@ function PassiveTreeClass:BuildArc(arcAngle, node1, connector, isMirroredArc)
 			vert[7],vert[8] = temp1, temp2
 		end
 		connector.vert[state] = vert
+		local positions = vert
+		local texcoords = {unpack(connector.c, 9, 16)}
+		local indices = {1, 2, 3, 1, 3, 4}
+		local mesh = NewMeshHandle(positions, texcoords, indices)
+		connector.mesh[state] = mesh
 	end
-	connector.c[9], connector.c[10] = 1, 1
-	connector.c[11], connector.c[12] = 0, p
-	connector.c[13], connector.c[14] = 0, 0
-	connector.c[15], connector.c[16] = p, 0
 end
 
 function PassiveTreeClass:CalcOrbitAngles(nodesInOrbit)

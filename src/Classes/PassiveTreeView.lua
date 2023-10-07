@@ -403,13 +403,6 @@ function PassiveTreeViewClass:Draw(build, viewPort, inputEvents)
 			setConnectorColor(1, 0, 0)
 		end
 
-		-- Convert vertex coordinates to screen-space and add them to the coordinate array
-		local vert = connector.vert[state]
-		connector.c[1], connector.c[2] = vert[1], vert[2]
-		connector.c[3], connector.c[4] = vert[3], vert[4]
-		connector.c[5], connector.c[6] = vert[5], vert[6]
-		connector.c[7], connector.c[8] = vert[7], vert[8]
-
 		if hoverDep and hoverDep[node1] and hoverDep[node2] then
 			-- Both nodes depend on the node currently being hovered over, so color the line red
 			setConnectorColor(1, 0, 0)
@@ -418,7 +411,7 @@ function PassiveTreeViewClass:Draw(build, viewPort, inputEvents)
 			setConnectorColor(0.75, 0.75, 0.75)
 		end
 		SetDrawColor(unpack(connectorColor))
-		DrawImageQuadAt(tree.assets[connector.type..state].handle, self.treeToScreen, unpack(connector.c))
+		DrawMeshAt(tree.assets[connector.type..state].handle, self.treeToScreen, connector.mesh[state])
 	end
 
 	-- Draw the connecting lines between nodes
